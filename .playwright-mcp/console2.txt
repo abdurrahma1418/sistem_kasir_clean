@@ -1,0 +1,13 @@
+[INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom.development.js:38559
+[LOG] [API] GET http://localhost:3001/api/v1/transaksi/statistik/periode?tanggal_mulai=2026-01-26&tanggal_selesai=2026-02-02 @ webpack-internal:///(app-pages-browser)/./lib/api.ts:22
+[LOG] [API] GET http://localhost:3001/api/v1/transaksi @ webpack-internal:///(app-pages-browser)/./lib/api.ts:22
+[LOG] [API] GET http://localhost:3001/api/v1/transaksi/statistik/periode?tanggal_mulai=2026-01-26&tanggal_selesai=2026-02-02 @ webpack-internal:///(app-pages-browser)/./lib/api.ts:22
+[LOG] [API] GET http://localhost:3001/api/v1/transaksi @ webpack-internal:///(app-pages-browser)/./lib/api.ts:22
+[LOG] [API] Response Status: 200 @ webpack-internal:///(app-pages-browser)/./lib/api.ts:33
+[LOG] [API] Success Response: {success: true, data: Object, timestamp: 2026-02-02T16:33:01.487Z} @ webpack-internal:///(app-pages-browser)/./lib/api.ts:41
+[LOG] [API] Response Status: 200 @ webpack-internal:///(app-pages-browser)/./lib/api.ts:33
+[LOG] [API] Success Response: {success: true, data: Object, timestamp: 2026-02-02T16:33:01.557Z} @ webpack-internal:///(app-pages-browser)/./lib/api.ts:41
+[LOG] [API] Response Status: 200 @ webpack-internal:///(app-pages-browser)/./lib/api.ts:33
+[LOG] [API] Success Response: {success: true, data: Array(5), timestamp: 2026-02-02T16:33:01.597Z} @ webpack-internal:///(app-pages-browser)/./lib/api.ts:41
+[LOG] [API] Response Status: 200 @ webpack-internal:///(app-pages-browser)/./lib/api.ts:33
+[LOG] [API] Success Response: {success: true, data: Array(5), timestamp: 2026-02-02T16:33:01.662Z} @ webpack-internal:///(app-pages-browser)/./lib/api.ts:41

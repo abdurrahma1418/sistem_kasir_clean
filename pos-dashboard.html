@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TOKO BUKU AA - POS System</title>
+
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-container">
+          <i class="bi bi-book-half logo-icon"></i>
+          <span class="logo-text">Toko Buku AA</span>
+        </div>
+        <button class="sidebar-toggle-btn" id="sidebarToggle">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active"
+          ><i class="bi bi-speedometer2"></i
+          ><span class="nav-text">Dashboard</span></a
+        >
+        <a href="#" class="nav-item"
+          ><i class="bi bi-cart3"></i><span class="nav-text">Kasir</span></a
+        >
+        <a href="#" class="nav-item"
+          ><i class="bi bi-book"></i><span class="nav-text">Buku</span></a
+        >
+        <a href="#" class="nav-item"
+          ><i class="bi bi-people"></i
+          ><span class="nav-text">Pelanggan</span></a
+        >
+        <a href="#" class="nav-item"
+          ><i class="bi bi-receipt"></i
+          ><span class="nav-text">Transaksi</span></a
+        >
+        <a href="#" class="nav-item"
+          ><i class="bi bi-graph-up"></i
+          ><span class="nav-text">Laporan</span></a
+        >
+        <a href="#" class="nav-item"
+          ><i class="bi bi-gear"></i><span class="nav-text">Pengaturan</span></a
+        >
+      </nav>
+    </aside>
+
+    <main class="main-content">
+      <header class="top-navbar">
+        <div class="navbar-left">
+          <button class="sidebar-trigger" id="sidebarTrigger">
+            <i class="bi bi-list"></i>
+          </button>
+          <h2 class="page-title">TOKO BUKU AA</h2>
+        </div>
+        <div class="navbar-right">
+          <div class="search-box">
+            <i class="bi bi-search"></i>
+            <input type="text" placeholder="Cari buku..." id="searchInput" />
+          </div>
+          <button class="icon-btn">
+            <i class="bi bi-bell"></i><span class="badge">3</span>
+          </button>
+          <div class="user-dropdown">
+            <img
+              src="https://ui-avatars.com/api/?name=Admin&background=1a4d2e&color=fff"
+              alt="Admin"
+              class="user-avatar"
+            />
+            <span class="user-name">Admin</span>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+        </div>
+      </header>
+
+      <div class="content-container">
+        <div class="stats-row">
+          <div class="stat-card glass-card">
+            <div class="stat-icon bg-success">
+              <i class="bi bi-currency-dollar"></i>
+            </div>
+            <div class="stat-content">
+              <p class="stat-label">Penjualan Hari Ini</p>
+              <h3 class="stat-value" id="todaySales">Rp 0</h3>
+            </div>
+          </div>
+          <div class="stat-card glass-card">
+            <div class="stat-icon bg-info">
+              <i class="bi bi-cart-check"></i>
+            </div>
+            <div class="stat-content">
+              <p class="stat-label">Total Transaksi</p>
+              <h3 class="stat-value" id="totalTransactions">0</h3>
+            </div>
+          </div>
+          <div class="stat-card glass-card">
+            <div class="stat-icon bg-warning"><i class="bi bi-book"></i></div>
+            <div class="stat-content">
+              <p class="stat-label">Buku Terjual</p>
+              <h3 class="stat-value" id="booksSold">0</h3>
+            </div>
+          </div>
+        </div>
+
+        <div class="pos-section">
+          <div class="products-container">
+            <div class="section-header">
+              <h3><i class="bi bi-grid"></i> Katalog Buku</h3>
+            </div>
+            <div class="products-grid" id="productsGrid"></div>
+          </div>
+
+          <div class="cart-container">
+            <div class="cart-header glass-card">
+              <div class="cart-title">
+                <i class="bi bi-cart4"></i>
+                <h3>Keranjang</h3>
+              </div>
+              <button class="btn-clear-cart" id="clearCart">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+            <div class="cart-items" id="cartItems">
+              <div class="empty-cart"><p>Keranjang kosong</p></div>
+            </div>
+            <div class="cart-summary glass-card">
+              <div class="summary-row">
+                <span>Total</span
+                ><span id="total" class="total-amount">Rp 0</span>
+              </div>
+              <button class="btn-checkout w-100 mt-3" id="checkoutBtn" disabled>
+                Bayar Sekarang
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div class="modal fade" id="checkoutModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Pembayaran</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <div id="orderSummary" class="mb-3"></div>
+            <div class="mb-3">
+              <label>Uang Diterima</label>
+              <input type="number" class="form-control" id="cashReceived" />
+            </div>
+            <div class="change-display">
+              <span>Kembalian: </span><span id="changeAmount">Rp 0</span>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-success" id="processPayment">
+              Proses
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app-index.js"></script>
+  </body>
+</html>
