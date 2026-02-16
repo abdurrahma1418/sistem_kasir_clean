@@ -1,0 +1,12 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "watchPatterns": ["pos-dashboard-nextjs/**"]
+  },
+  "deploy": {
+    "rootDirectory": "pos-dashboard-nextjs",
+    "buildCommand": "npm install && npm run build",
+    "startCommand": "npm run start"
+  }
+}
