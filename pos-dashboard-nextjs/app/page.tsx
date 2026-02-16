@@ -7,7 +7,7 @@ import ProductsGrid from "@/components/ProductsGrid";
 import Cart from "@/components/Cart";
 import CheckoutModal from "@/components/CheckoutModal";
 import Notifications from "@/components/Notifications";
-import { Product, CartItem } from "@/types"; // Category dihapus karena tidak ada di DB
+import { Product, CartItem } from "@/types";
 import { formatRupiah } from "@/lib/utils";
 import {
   fetchProducts,
@@ -36,24 +36,24 @@ export default function HomePage() {
 
   /**
    * MENGUBAH DATA API MENJADI FORMAT UI
-   * Sinkron dengan schema DB (id_barang, nama, harga_jual, stok)
+   * Menggunakan fallback (?? 0) untuk mencegah error TypeScript di Railway
    */
   const mapProductData = useCallback((data: any[]): Product[] => {
     if (!Array.isArray(data)) return [];
     return data.map((item) => ({
-      id: item.id_barang || item.id,
-      title: item.nama || "Produk Tanpa Nama",
-      author: `Kode: ${item.kode_barang || "-"}`,
-      price: Number(item.harga_jual || item.harga || 0),
-      stock: Number(item.stok) || 0,
-      sold: Number(item.terjual) || 0,
+      id: item.id_barang ?? item.id ?? Math.random(),
+      title: item.nama ?? "Produk Tanpa Nama",
+      author: `Kode: ${item.kode_barang ?? "-"}`,
+      price: Number(item.harga_jual ?? item.harga ?? 0),
+      stock: Number(item.stok ?? 0),
+      sold: Number(item.terjual ?? 0),
       icon: "bi-box-seam",
-      kode_barang: item.kode_barang,
+      kode_barang: item.kode_barang ?? "",
     }));
   }, []);
 
   /**
-   * REFRESH DATA DARI SERVER (Produk & Statistik)
+   * REFRESH DATA DARI SERVER
    */
   const refreshData = useCallback(async () => {
     try {
@@ -64,11 +64,13 @@ export default function HomePage() {
 
       setProducts(mapProductData(productData));
 
+      // Memastikan nilai statsData ada sebelum di-parse
+      const totalSales = parseFloat(statsData?.total_penjualan) || 0;
       setStats({
-        todaySales: formatRupiah(parseFloat(statsData.total_penjualan) || 0),
-        totalTransactions: Number(statsData.total_transaksi) || 0,
-        itemsSold: Number(statsData.total_items) || 0,
-        newCustomers: 24, // Placeholder data
+        todaySales: formatRupiah(totalSales),
+        totalTransactions: Number(statsData?.total_transaksi ?? 0),
+        itemsSold: Number(statsData?.total_items ?? 0),
+        newCustomers: 24, // Placeholder
       });
     } catch (error) {
       console.error("Sync Error:", error);
@@ -81,14 +83,14 @@ export default function HomePage() {
   }, [refreshData]);
 
   /**
-   * UPDATE STOK MANUAL (OPTIMISTIC UPDATE)
+   * UPDATE STOK
    */
   const handleUpdateStock = async (
     productId: number | string,
     newStockValue: number,
   ) => {
     try {
-      // Update UI seketika
+      // Optimistic Update (Update UI dulu agar terasa cepat)
       setProducts((prev) =>
         prev.map((p) =>
           p.id === productId ? { ...p, stock: newStockValue } : p,
@@ -100,12 +102,12 @@ export default function HomePage() {
       await refreshData();
     } catch (error: any) {
       addNotification(error.message || "Gagal memperbarui stok", "danger");
-      refreshData(); // Rollback data asli
+      refreshData(); // Kembalikan data jika gagal
     }
   };
 
   /**
-   * LOGIKA KERANJANG BELANJA
+   * LOGIKA KERANJANG
    */
   const handleAddToCart = useCallback(
     (productId: number | string) => {
@@ -132,7 +134,7 @@ export default function HomePage() {
         return [...prev, { ...product, quantity: 1 }];
       });
 
-      addNotification(`${product?.title} masuk keranjang`, "success");
+      addNotification(`${product.title} masuk keranjang`, "success");
     },
     [products, addNotification],
   );
@@ -204,7 +206,7 @@ export default function HomePage() {
         onClose={() => setIsCheckoutModalOpen(false)}
         cart={cart}
         total={subtotal}
-        subtotal={subtotal} // Menghindari error missing prop di CheckoutModal
+        subtotal={subtotal}
         onProcessPayment={async (method, cash) => {
           if (isLoading) return;
           setIsLoading(true);
