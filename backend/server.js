@@ -1,5 +1,5 @@
 /**
- * TOKO BUKU AA - MAIN SERVER FILE (FINAL PRODUCTION READY)
+ * TOKO BUKU AA - MAIN SERVER FILE (FINAL PRODUCTION READY - FIXED CORS)
  */
 require("dotenv").config();
 const express = require("express");
@@ -10,7 +10,6 @@ const rateLimit = require("express-rate-limit");
 const axios = require("axios");
 
 // 1. IMPORT DATABASE & HELPERS
-// Pastikan file database.js meng-export pool dan testConnection
 const { testConnection, pool } = require("./config/database");
 
 // 2. IMPORT ROUTES
@@ -22,22 +21,48 @@ const app = express();
 const PORT = process.env.PORT || 3005;
 
 // ============================================
-// MIDDLEWARES - FIXED CORS
+// MIDDLEWARES - FIXED CORS POLICY
 // ============================================
+
+// List domain yang diizinkan (Frontend kamu)
+const allowedOrigins = [
+  "https://sistemkasirclean-production.up.railway.app",
+  "https://sistemkasirclean-production-7f86.up.railway.app",
+  "http://localhost:3000", // Untuk testing lokal
+];
 
 app.use(
   cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    origin: function (origin, callback) {
+      // Izinkan jika origin ada di list atau jika request datang dari server-to-server (null)
+      if (
+        !origin ||
+        allowedOrigins.indexOf(origin) !== -1 ||
+        origin.includes("railway.app")
+      ) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-callback-token"],
     credentials: true,
   }),
 );
 
-app.use(helmet({ contentSecurityPolicy: false }));
+// Penting: Helmet bisa memblokir fetch jika tidak diseting 'crossOriginResourcePolicy'
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
+
 app.use(compression());
 app.use(express.json());
 
+// Limiter agar server tidak tumbang kena spam
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 5000,
@@ -46,7 +71,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // ============================================
-// API ROUTES (LANGSUNG TANPA PREFIX)
+// API ROUTES
 // ============================================
 
 app.get("/", (req, res) => {
@@ -69,7 +94,6 @@ const XENDIT_AUTH_TOKEN = Buffer.from(
   `${process.env.XENDIT_SECRET_KEY}:`,
 ).toString("base64");
 
-// ENDPOINT: Membuat Invoice
 app.post("/xendit/create-invoice", async (req, res) => {
   try {
     const { external_id, amount, items } = req.body;
@@ -81,9 +105,9 @@ app.post("/xendit/create-invoice", async (req, res) => {
         description: "Pembayaran Toko Buku AA",
         currency: "IDR",
         items: items.map((item) => ({
-          name: item.title || item.name || "Buku",
-          quantity: Number(item.quantity),
-          price: Math.round(Number(item.price)),
+          name: item.nama_produk || item.title || item.name || "Buku",
+          quantity: Number(item.quantity || item.jumlah),
+          price: Math.round(Number(item.price || item.harga_satuan)),
         })),
         success_redirect_url: process.env.FRONTEND_URL,
       },
@@ -101,9 +125,7 @@ app.post("/xendit/create-invoice", async (req, res) => {
   }
 });
 
-// ENDPOINT: Webhook (Otomasi Update Database)
 app.post("/webhooks/xendit", async (req, res) => {
-  // Verifikasi Keamanan Token dari Xendit
   const callbackToken = req.headers["x-callback-token"];
   if (
     process.env.XENDIT_CALLBACK_TOKEN &&
@@ -118,21 +140,18 @@ app.post("/webhooks/xendit", async (req, res) => {
 
   try {
     if (status === "PAID" || status === "SETTLED") {
-      // Jika Lunas atau Bayar Terlambat
       await pool.query(
         "UPDATE transaksi SET status = 'SUCCESS', tgl_transaksi = NOW() WHERE nomor_transaksi = ?",
         [external_id],
       );
       console.log(`✅ DATABASE: ${external_id} BERHASIL DIUPDATE (PAID)`);
     } else if (status === "EXPIRED") {
-      // Jika Waktu Bayar Habis
       await pool.query(
         "UPDATE transaksi SET status = 'CANCELLED' WHERE nomor_transaksi = ?",
         [external_id],
       );
       console.log(`💀 DATABASE: ${external_id} DIBATALKAN (EXPIRED)`);
     }
-
     res.status(200).send("OK");
   } catch (dbErr) {
     console.error("❌ DB UPDATE ERROR:", dbErr.message);
@@ -161,14 +180,14 @@ app.listen(PORT, async () => {
     "\x1b[36m%s\x1b[0m",
     "\n╔════════════════════════════════════════════════╗",
   );
-  console.log(`║    🚀 TOKO BUKU AA - RUNNING ON PORT: ${PORT}       ║`);
+  console.log(`║    🚀 TOKO BUKU AA - RUNNING ON PORT: ${PORT}      ║`);
   try {
     const dbConnected = await testConnection();
     if (dbConnected) {
-      console.log(`║    ✅ DATABASE: TERHUBUNG                           ║`);
+      console.log(`║    ✅ DATABASE: TERHUBUNG                        ║`);
     }
   } catch (error) {
-    console.log(`║    ❌ DATABASE: GAGAL KONEKSI                     ║`);
+    console.log(`║    ❌ DATABASE: GAGAL KONEKSI                    ║`);
   }
   console.log(
     "\x1b[36m%s\x1b[0m",
