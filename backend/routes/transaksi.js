@@ -23,7 +23,7 @@ router.get("/statistik/hari-ini", async (req, res) => {
     console.error("❌ Error Stats Hari Ini:", error.message);
     res
       .status(500)
-      .json({ success: false, message: "Gagal mengambil statistik hari ini" });
+      .json({ success: false, message: "Gagal mengambil statistik" });
   }
 });
 
@@ -60,7 +60,7 @@ router.get("/", async (req, res) => {
     console.error("❌ Error Fetch All:", error.message);
     res
       .status(500)
-      .json({ success: false, message: "Gagal mengambil riwayat transaksi" });
+      .json({ success: false, message: "Gagal mengambil riwayat" });
   }
 });
 
@@ -89,11 +89,10 @@ router.get("/:id", async (req, res) => {
 });
 
 /**
- * [E] PROSES TRANSAKSI BARU (FIXED)
+ * [E] PROSES TRANSAKSI BARU (FIXED ANTI-NaN)
  */
 router.post("/", async (req, res) => {
   try {
-    // FIX: Ambil total_harga atau total agar sinkron dengan frontend
     const {
       total,
       total_harga,
@@ -103,26 +102,31 @@ router.post("/", async (req, res) => {
       uang_diterima,
     } = req.body;
 
-    // Normalisasi nilai total dan uang bayar
-    const finalTotal = Number(total_harga || total || 0);
-    const finalBayar = Number(uang_diterima || bayar || 0);
+    // --- PROTEKSI ANTI-NaN ---
+    // Menggunakan parseFloat dan || 0 agar jika data kosong hasilnya 0, bukan NaN
+    const rawTotal = total_harga || total || 0;
+    const rawBayar = uang_diterima || bayar || 0;
 
-    // 1. Validasi Input
+    const finalTotal = isNaN(parseFloat(rawTotal)) ? 0 : parseFloat(rawTotal);
+    const finalBayar = isNaN(parseFloat(rawBayar)) ? 0 : parseFloat(rawBayar);
+
+    // 1. Validasi Input Dasar
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res
         .status(400)
-        .json({ success: false, message: "Keranjang kosong" });
+        .json({ success: false, message: "Keranjang belanja kosong" });
     }
+
     if (finalTotal <= 0) {
       return res
         .status(400)
-        .json({ success: false, message: "Total harga tidak valid" });
+        .json({ success: false, message: "Total harga tidak valid atau nol" });
     }
 
     const nomor_transaksi = `TRX-${Date.now()}`;
     let xenditInvoice = null;
 
-    // 2. Jika Non-Tunai, Buat Invoice Xendit
+    // 2. Jika Non-Tunai, Hubungi Xendit
     if (metode_pembayaran !== "cash") {
       try {
         xenditInvoice = await Invoice.createInvoice({
@@ -131,26 +135,26 @@ router.post("/", async (req, res) => {
             amount: finalTotal,
             description: `Pembayaran Toko Buku AA - ${nomor_transaksi}`,
             currency: "IDR",
-            successRedirectUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/pembayaran-berhasil`,
-            failureRedirectUrl: `${process.env.FRONTEND_URL || "http://localhost:3000"}/pembayaran-gagal`,
+            successRedirectUrl: `${process.env.FRONTEND_URL}/pembayaran-berhasil`,
+            failureRedirectUrl: `${process.env.FRONTEND_URL}/pembayaran-gagal`,
           },
         });
       } catch (xenditErr) {
         console.error("❌ Xendit Error:", xenditErr);
-        return res.status(502).json({
-          success: false,
-          message: "Gagal terhubung ke layanan Xendit",
-        });
+        return res
+          .status(502)
+          .json({ success: false, message: "Gagal membuat invoice Xendit" });
       }
     }
 
     // 3. Simpan ke Database via Model
-    const status_awal = metode_pembayaran === "cash" ? "success" : "pending";
+    // Kita pastikan data yang dikirim ke model adalah ANGKA BERSIH
+    const status_awal = metode_pembayaran === "cash" ? "SUCCESS" : "PENDING";
 
     const hasilSimpan = await transaksiModel.create({
       items,
       total: finalTotal,
-      metode_pembayaran,
+      metode_pembayaran: metode_pembayaran || "cash",
       nomor_transaksi,
       status: status_awal,
       bayar: metode_pembayaran === "cash" ? finalBayar : finalTotal,
@@ -158,10 +162,10 @@ router.post("/", async (req, res) => {
       payment_url: xenditInvoice ? xenditInvoice.invoiceUrl : null,
     });
 
-    // 4. Respon Berhasil
+    // 4. Respon ke Frontend
     res.json({
       success: true,
-      message: "Transaksi berhasil dibuat",
+      message: "Transaksi berhasil diproses",
       data: {
         id_transaksi: hasilSimpan.insertId,
         nomor_transaksi: nomor_transaksi,
@@ -170,10 +174,11 @@ router.post("/", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("❌ Error Transaksi:", error.message);
+    console.error("❌ Error Utama Transaksi:", error.message);
     res.status(500).json({
       success: false,
-      message: error.message || "Gagal memproses transaksi",
+      message: "Gagal menyimpan transaksi ke database",
+      error: error.message,
     });
   }
 });
