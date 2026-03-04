@@ -1,5 +1,5 @@
 /**
- * TOKO BUKU AA - MAIN SERVER FILE (ULTIMATE CORS & PRODUCTION FIX)
+ * TOKO BUKU AA - MAIN SERVER FILE (SUPER FIX CORS)
  */
 require("dotenv").config();
 const express = require("express");
@@ -21,27 +21,44 @@ const app = express();
 const PORT = process.env.PORT || 3005;
 
 // ============================================
-// MIDDLEWARES - THE REAL CORS FIX
+// 🛠️ THE ULTIMATE CORS MIDDLEWARE (MANUAL OVERRIDE)
 // ============================================
 
-// Pastikan middleware CORS berada di paling atas sebelum rute apa pun
-app.use(
-  cors({
-    origin: true, // Mengizinkan origin yang melakukan request secara dinamis
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-callback-token"],
-  }),
-);
+// Taruh ini di paling atas, bahkan sebelum CORS library
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  // Izinkan semua origin yang mengandung 'railway.app' atau localhost
+  if (
+    origin &&
+    (origin.includes("railway.app") || origin.includes("localhost"))
+  ) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "X-Requested-With, Content-Type, Authorization, x-callback-token",
+  );
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
-// Handle Preflight secara manual agar tidak kena blokir browser (PENTING!)
-app.options("*", cors());
+  // Jika ini adalah preflight (OPTIONS), langsung jawab 200 tanpa lanjut ke route
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
-// Konfigurasi Helmet agar tidak terlalu ketat di lingkungan Railway
+// Library CORS sebagai backup
+app.use(cors({ origin: true, credentials: true }));
+
+// Helmet dikurangi dulu agar tidak memblokir header manual kita
 app.use(
   helmet({
     contentSecurityPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginResourcePolicy: false,
     crossOriginEmbedderPolicy: false,
   }),
 );
@@ -49,7 +66,7 @@ app.use(
 app.use(compression());
 app.use(express.json());
 
-// Limiter (Sudah diperlonggar agar tidak error saat load banyak data)
+// Limiter (Biar aman dari spam)
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 10000,
@@ -76,7 +93,6 @@ app.use("/laporan", laporanRoutes);
 // ============================================
 // 💳 XENDIT CONFIGURATION & WEBHOOKS
 // ============================================
-
 const XENDIT_AUTH_TOKEN = Buffer.from(
   `${process.env.XENDIT_SECRET_KEY}:`,
 ).toString("base64");
@@ -120,7 +136,6 @@ app.post("/webhooks/xendit", async (req, res) => {
   ) {
     return res.status(403).json({ message: "Invalid Token" });
   }
-
   const { status, external_id } = req.body;
   try {
     if (status === "PAID" || status === "SETTLED") {
@@ -143,7 +158,6 @@ app.post("/webhooks/xendit", async (req, res) => {
 // ============================================
 // ERROR HANDLING
 // ============================================
-
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Endpoint tidak ditemukan" });
 });
@@ -164,9 +178,8 @@ app.listen(PORT, async () => {
   console.log(`║    🚀 TOKO BUKU AA - RUNNING ON PORT: ${PORT}      ║`);
   try {
     const dbConnected = await testConnection();
-    if (dbConnected) {
+    if (dbConnected)
       console.log(`║    ✅ DATABASE: TERHUBUNG                        ║`);
-    }
   } catch (error) {
     console.log(`║    ❌ DATABASE: GAGAL KONEKSI                    ║`);
   }
