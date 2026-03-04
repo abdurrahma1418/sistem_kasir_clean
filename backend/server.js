@@ -1,5 +1,5 @@
 /**
- * TOKO BUKU AA - MAIN SERVER FILE (FINAL PRODUCTION READY - FIXED CORS)
+ * TOKO BUKU AA - MAIN SERVER FILE (ULTIMATE CORS & PRODUCTION FIX)
  */
 require("dotenv").config();
 const express = require("express");
@@ -21,51 +21,38 @@ const app = express();
 const PORT = process.env.PORT || 3005;
 
 // ============================================
-// MIDDLEWARES - FIXED CORS POLICY
+// MIDDLEWARES - THE REAL CORS FIX
 // ============================================
 
-// List domain yang diizinkan (Frontend kamu)
-const allowedOrigins = [
-  "https://sistemkasirclean-production.up.railway.app",
-  "https://sistemkasirclean-production-7f86.up.railway.app",
-  "http://localhost:3000", // Untuk testing lokal
-];
-
+// Pastikan middleware CORS berada di paling atas sebelum rute apa pun
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Izinkan jika origin ada di list atau jika request datang dari server-to-server (null)
-      if (
-        !origin ||
-        allowedOrigins.indexOf(origin) !== -1 ||
-        origin.includes("railway.app")
-      ) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: true, // Mengizinkan origin yang melakukan request secara dinamis
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-callback-token"],
-    credentials: true,
   }),
 );
 
-// Penting: Helmet bisa memblokir fetch jika tidak diseting 'crossOriginResourcePolicy'
+// Handle Preflight secara manual agar tidak kena blokir browser (PENTING!)
+app.options("*", cors());
+
+// Konfigurasi Helmet agar tidak terlalu ketat di lingkungan Railway
 app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginEmbedderPolicy: false,
   }),
 );
 
 app.use(compression());
 app.use(express.json());
 
-// Limiter agar server tidak tumbang kena spam
+// Limiter (Sudah diperlonggar agar tidak error saat load banyak data)
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: 5000,
+  max: 10000,
   message: { success: false, message: "Terlalu banyak permintaan." },
 });
 app.use(limiter);
@@ -131,30 +118,24 @@ app.post("/webhooks/xendit", async (req, res) => {
     process.env.XENDIT_CALLBACK_TOKEN &&
     callbackToken !== process.env.XENDIT_CALLBACK_TOKEN
   ) {
-    console.log("⚠️ Webhook ditolak: Token tidak valid");
     return res.status(403).json({ message: "Invalid Token" });
   }
 
   const { status, external_id } = req.body;
-  console.log(`🔔 XENDIT EVENT: ${external_id} [${status}]`);
-
   try {
     if (status === "PAID" || status === "SETTLED") {
       await pool.query(
         "UPDATE transaksi SET status = 'SUCCESS', tgl_transaksi = NOW() WHERE nomor_transaksi = ?",
         [external_id],
       );
-      console.log(`✅ DATABASE: ${external_id} BERHASIL DIUPDATE (PAID)`);
     } else if (status === "EXPIRED") {
       await pool.query(
         "UPDATE transaksi SET status = 'CANCELLED' WHERE nomor_transaksi = ?",
         [external_id],
       );
-      console.log(`💀 DATABASE: ${external_id} DIBATALKAN (EXPIRED)`);
     }
     res.status(200).send("OK");
   } catch (dbErr) {
-    console.error("❌ DB UPDATE ERROR:", dbErr.message);
     res.status(500).send("Database Error");
   }
 });
