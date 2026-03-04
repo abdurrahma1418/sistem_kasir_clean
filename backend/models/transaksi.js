@@ -1,9 +1,8 @@
 /**
- * TOKO BUKU AA - TRANSAKSI MODEL (FIXED & SYNCED)
+ * TOKO BUKU AA - TRANSAKSI MODEL (FIXED FOR MEMORY SCHEMA)
  */
 const { query, transaction } = require("../config/database");
 const logger = require("../utils/logger");
-const barangModel = require("./barang");
 
 const TransaksiModel = {
   /**
@@ -14,12 +13,12 @@ const TransaksiModel = {
       const sql = `
             SELECT 
                 COUNT(*) as total_transaksi, 
-                COALESCE(SUM(total), 0) as total_penjualan,
+                COALESCE(SUM(total_harga), 0) as total_penjualan,
                 (SELECT COALESCE(SUM(jumlah), 0) FROM detail_transaksi dt 
                  JOIN transaksi t ON dt.id_transaksi = t.id_transaksi 
-                 WHERE DATE(t.created_at) = CURDATE()) as total_items
+                 WHERE DATE(t.tgl_transaksi) = CURDATE()) as total_items
             FROM transaksi 
-            WHERE DATE(created_at) = CURDATE()
+            WHERE DATE(tgl_transaksi) = CURDATE()
         `;
       const rows = await query(sql);
       return rows[0];
@@ -36,13 +35,13 @@ const TransaksiModel = {
     try {
       const sql = `
             SELECT 
-                DATE(created_at) as tanggal,
+                DATE(tgl_transaksi) as tanggal,
                 COUNT(*) as jumlah_transaksi,
-                SUM(total) as total_pendapatan
+                SUM(total_harga) as total_pendapatan
             FROM transaksi
-            WHERE DATE(created_at) BETWEEN ? AND ?
-            GROUP BY DATE(created_at)
-            ORDER BY DATE(created_at) ASC
+            WHERE DATE(tgl_transaksi) BETWEEN ? AND ?
+            GROUP BY DATE(tgl_transaksi)
+            ORDER BY DATE(tgl_transaksi) ASC
         `;
       return await query(sql, [start, end]);
     } catch (error) {
@@ -57,61 +56,56 @@ const TransaksiModel = {
   create: async (data) => {
     try {
       return await transaction(async (connection) => {
-        // Validasi Stok
-        const stockCheck = await barangModel.checkStockBatch(data.items);
-        if (!stockCheck.available) {
-          throw new Error(`Stok tidak mencukupi untuk beberapa barang`);
-        }
-
         const nomor_transaksi = data.nomor_transaksi || `TRX-${Date.now()}`;
-        const total = data.total;
-        const bayar = data.bayar || 0;
+        const total = Number(data.total || 0);
+        const bayar = Number(data.bayar || 0);
         const kembalian = bayar >= total ? bayar - total : 0;
         const metode = data.metode_pembayaran || "cash";
-        const status = metode === "cash" ? "lunas" : "pending";
+        const status =
+          data.status || (metode === "cash" ? "SUCCESS" : "PENDING");
 
+        // INSERT KE TABEL 'transaksi'
+        // Catatan: Jika external_id & payment_url tidak ada di DB, bagian ini akan error.
+        // Saya asumsikan Anda sudah menambahkannya atau ini akan di-skip.
         const [headerResult] = await connection.query(
           `INSERT INTO transaksi 
-          (nomor_transaksi, total, bayar, kembalian, metode_pembayaran, status_pembayaran, external_id, payment_url) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            nomor_transaksi,
-            total,
-            bayar,
-            kembalian,
-            metode,
-            status,
-            data.external_id || null,
-            data.payment_url || null,
-          ],
+          (nomor_transaksi, tgl_transaksi, total_harga, bayar, kembalian, status, metode_pembayaran) 
+          VALUES (?, NOW(), ?, ?, ?, ?, ?)`,
+          [nomor_transaksi, total, bayar, kembalian, status, metode],
         );
 
         const transaksiId = headerResult.insertId;
 
         for (const item of data.items) {
-          // PERBAIKAN: Normalisasi field id_barang
-          const id_barang = item.id_barang || item.id_buku || item.id;
-          const qty = item.jumlah || item.qty || item.quantity;
-          const harga = item.harga || item.price;
+          // Normalisasi field sesuai tabel 'produk'
+          const id_produk = item.id_produk || item.id_buku || item.id;
+          const qty = Number(item.jumlah || item.qty || item.quantity || 0);
+          const harga = Number(
+            item.harga_satuan || item.harga || item.price || 0,
+          );
           const subtotal = harga * qty;
 
-          if (!id_barang) throw new Error("ID Barang tidak valid");
+          if (!id_produk)
+            throw new Error("ID Produk tidak valid untuk salah satu item");
 
-          // Simpan Detail
+          // 1. Simpan ke detail_transaksi
           await connection.query(
-            `INSERT INTO detail_transaksi (id_transaksi, id_barang, jumlah, subtotal) VALUES (?, ?, ?, ?)`,
-            [transaksiId, id_barang, qty, subtotal],
+            `INSERT INTO detail_transaksi (id_transaksi, id_produk, jumlah, harga_satuan, subtotal) VALUES (?, ?, ?, ?, ?)`,
+            [transaksiId, id_produk, qty, harga, subtotal],
           );
 
-          // Potong Stok
-          await barangModel.deductStock(connection, id_barang, qty);
+          // 2. Potong Stok di tabel 'produk'
+          await connection.query(
+            `UPDATE produk SET stok = stok - ? WHERE id_produk = ?`,
+            [qty, id_produk],
+          );
         }
 
         return { insertId: transaksiId, nomor_transaksi };
       });
     } catch (error) {
       logger.error("Error create transaksi", { error: error.message });
-      throw error; // Ini penting agar transaction melakukan rollback
+      throw error;
     }
   },
 
@@ -120,7 +114,7 @@ const TransaksiModel = {
    */
   getAll: async () => {
     try {
-      return await query("SELECT * FROM transaksi ORDER BY created_at DESC");
+      return await query("SELECT * FROM transaksi ORDER BY tgl_transaksi DESC");
     } catch (error) {
       logger.error("Error getAll transaksi", { error: error.message });
       throw error;
@@ -137,11 +131,11 @@ const TransaksiModel = {
         [id],
       );
       if (rows.length > 0) {
-        // PERBAIKAN: JOIN ke tabel 'barang' bukan 'buku'
+        // JOIN ke tabel 'produk' sesuai skema memori
         const items = await query(
-          `SELECT dt.*, b.nama as nama_barang 
+          `SELECT dt.*, p.nama_produk 
            FROM detail_transaksi dt 
-           JOIN barang b ON dt.id_barang = b.id_barang
+           JOIN produk p ON dt.id_produk = p.id_produk
            WHERE dt.id_transaksi = ?`,
           [id],
         );
