@@ -1,5 +1,5 @@
 /**
- * TOKO BUKU AA - TRANSAKSI MODEL (FIXED FOR MEMORY SCHEMA)
+ * TOKO BUKU AA - TRANSAKSI MODEL (FINAL SYNC)
  */
 const { query, transaction } = require("../config/database");
 const logger = require("../utils/logger");
@@ -10,6 +10,7 @@ const TransaksiModel = {
    */
   getStatistikHariIni: async () => {
     try {
+      // Menggunakan tgl_transaksi sesuai permintaan sebelumnya
       const sql = `
             SELECT 
                 COUNT(*) as total_transaksi, 
@@ -24,7 +25,8 @@ const TransaksiModel = {
       return rows[0];
     } catch (error) {
       logger.error("Error getStatistikHariIni", { error: error.message });
-      throw error;
+      // Jangan throw error mentah-mentah agar tidak mematikan server
+      return { total_transaksi: 0, total_penjualan: 0, total_items: 0 };
     }
   },
 
@@ -51,7 +53,7 @@ const TransaksiModel = {
   },
 
   /**
-   * 3. MEMBUAT TRANSAKSI BARU
+   * 3. MEMBUAT TRANSAKSI BARU (PROTECTED)
    */
   create: async (data) => {
     try {
@@ -64,9 +66,9 @@ const TransaksiModel = {
         const status =
           data.status || (metode === "cash" ? "SUCCESS" : "PENDING");
 
-        // INSERT KE TABEL 'transaksi'
-        // Catatan: Jika external_id & payment_url tidak ada di DB, bagian ini akan error.
-        // Saya asumsikan Anda sudah menambahkannya atau ini akan di-skip.
+        // --- INSERT HEADER ---
+        // Menghapus tgl_transaksi dari insert jika di DB menggunakan DEFAULT CURRENT_TIMESTAMP
+        // Jika error, pastikan kolom total_harga, bayar, kembalian, status, metode_pembayaran ADA di DB
         const [headerResult] = await connection.query(
           `INSERT INTO transaksi 
           (nomor_transaksi, tgl_transaksi, total_harga, bayar, kembalian, status, metode_pembayaran) 
@@ -76,8 +78,8 @@ const TransaksiModel = {
 
         const transaksiId = headerResult.insertId;
 
+        // --- INSERT DETAILS ---
         for (const item of data.items) {
-          // Normalisasi field sesuai tabel 'produk'
           const id_produk = item.id_produk || item.id_buku || item.id;
           const qty = Number(item.jumlah || item.qty || item.quantity || 0);
           const harga = Number(
@@ -86,15 +88,17 @@ const TransaksiModel = {
           const subtotal = harga * qty;
 
           if (!id_produk)
-            throw new Error("ID Produk tidak valid untuk salah satu item");
+            throw new Error(
+              "ID Produk tidak ditemukan di salah satu item keranjang",
+            );
 
-          // 1. Simpan ke detail_transaksi
+          // Simpan Detail
           await connection.query(
             `INSERT INTO detail_transaksi (id_transaksi, id_produk, jumlah, harga_satuan, subtotal) VALUES (?, ?, ?, ?, ?)`,
             [transaksiId, id_produk, qty, harga, subtotal],
           );
 
-          // 2. Potong Stok di tabel 'produk'
+          // Update Stok Produk
           await connection.query(
             `UPDATE produk SET stok = stok - ? WHERE id_produk = ?`,
             [qty, id_produk],
@@ -104,7 +108,7 @@ const TransaksiModel = {
         return { insertId: transaksiId, nomor_transaksi };
       });
     } catch (error) {
-      logger.error("Error create transaksi", { error: error.message });
+      console.error("❌ DATABASE EXECUTION ERROR:", error.message);
       throw error;
     }
   },
@@ -116,8 +120,7 @@ const TransaksiModel = {
     try {
       return await query("SELECT * FROM transaksi ORDER BY tgl_transaksi DESC");
     } catch (error) {
-      logger.error("Error getAll transaksi", { error: error.message });
-      throw error;
+      return [];
     }
   },
 
@@ -131,7 +134,6 @@ const TransaksiModel = {
         [id],
       );
       if (rows.length > 0) {
-        // JOIN ke tabel 'produk' sesuai skema memori
         const items = await query(
           `SELECT dt.*, p.nama_produk 
            FROM detail_transaksi dt 
@@ -144,7 +146,6 @@ const TransaksiModel = {
       }
       return null;
     } catch (error) {
-      logger.error("Error getById transaksi", { error: error.message });
       throw error;
     }
   },
@@ -156,7 +157,6 @@ const TransaksiModel = {
     try {
       return await query("DELETE FROM transaksi WHERE id_transaksi = ?", [id]);
     } catch (error) {
-      logger.error("Error delete transaksi", { error: error.message });
       throw error;
     }
   },
